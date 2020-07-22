@@ -12,12 +12,12 @@ $this->setFrameMode(true);
     <div class="row mb-2">
         <?if($arParams['SHOW_CSV_DOWNLOAD'] == 'Y'):?>
             <div class="col-6 text-center">
-                <a href="?task=getCsv" class="btn btn-warning" role="button">Выгрузить CSV</a>
+                <a href="#" class="btn btn-warning download-file" data-type="csv" role="button">Выгрузить CSV</a>
             </div>
         <?endif;?>
         <?if($arParams['SHOW_XML_DOWNLOAD'] == 'Y'):?>
             <div class="col-6 text-center">
-                <a href="?task=getXml" class="btn btn-warning" role="button">Выгрузить XML</a>
+                <a href="#" class="btn btn-warning download-file" data-type="xml" role="button">Выгрузить XML</a>
             </div>
         <?endif;?>
     </div>
@@ -54,4 +54,30 @@ $this->setFrameMode(true);
             ?>
         <?endif;?>
     </div>
+
+    <script>
+        $(document).ready(function () {
+            $('.download-file').on('click', function (e) {
+                e.preventDefault();
+                let type = $(this).data('type');
+
+                BX.ajax.runComponentAction(
+                    'smax:user.list',
+                    'getFile', {
+                        mode: 'class',
+                        data: {
+                            type: type
+                        }
+                    }
+                ).then(function(data) {
+                    /*
+                    * Можно сразу файл отдать на скачивание, но тогда XML просто откроется.
+                    * location.href = '/upload/users.'+type;
+                    * Код ниже реализует скачивание в любом случае
+                    * */
+                    location.href = '?get_file='+type;
+                });
+            });
+        });
+    </script>
 <?endif;?>

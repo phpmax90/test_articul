@@ -4,8 +4,9 @@ if(!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED !== true) die();
 use Bitrix\Main;
 use Bitrix\Main\Localization\Loc as Loc;
 use \Bitrix\Main\UserTable;
+use Bitrix\Main\Engine\Contract\Controllerable;
 
-class UserListComponent extends CBitrixComponent
+class UserListComponent extends CBitrixComponent implements Controllerable
 {
     protected $navParams = [];
     protected $returned;
@@ -15,6 +16,35 @@ class UserListComponent extends CBitrixComponent
     {
         $this->includeComponentLang(basename(__FILE__));
         Loc::loadMessages(__FILE__);
+    }
+
+    public function configureActions()
+    {
+        return [
+            'getFile' => [
+                'prefilters' => [],
+                'postfilters' => []
+            ]
+        ];
+    }
+    public function getFileAction()
+    {
+        $type = $_POST['type'];
+
+        if($type == 'csv')
+        {
+            $file = $this->generateFileCsv();
+            copy($_SERVER['DOCUMENT_ROOT'].'/upload/'.$file, $_SERVER['DOCUMENT_ROOT'].'/upload/users.csv');
+        }
+        else
+        {
+            $file = $this->generateFileXml();
+            copy($_SERVER['DOCUMENT_ROOT'].'/upload/'.$file, $_SERVER['DOCUMENT_ROOT'].'/upload/users.xml');
+        }
+
+        unlink($_SERVER['DOCUMENT_ROOT'].'/upload/'.$file);
+
+        return ['success' => true];
     }
 
     public function onPrepareComponentParams($params)
@@ -66,9 +96,28 @@ class UserListComponent extends CBitrixComponent
         }
     }
 
-    public function getCsv()
+    public function getUserList(){
+        $list = [];
+        $result = UserTable::getList(
+            [
+                'select' => array('ID', 'NAME', 'EMAIL'),
+                'filter' => $this->filter,
+                'order'  => array('ID' => 'DESC')
+            ]
+        );
+
+        while ($arUser = $result->fetch())
+        {
+            $list[] = $arUser;
+        }
+
+        return $list;
+    }
+
+    public function generateFileCsv()
     {
-        $filePath = $_SERVER['DOCUMENT_ROOT'] . '/upload/users.csv';
+        $tmp_file = 'users_'.uniqid().'.csv';
+        $filePath = $_SERVER['DOCUMENT_ROOT'] . '/upload/'.$tmp_file;
         $fp = fopen($filePath, 'w+');
         @fclose($fp);
 
@@ -79,38 +128,20 @@ class UserListComponent extends CBitrixComponent
         $csvFile->SetDelimiter($delimiter);
         $csvFile->SetFirstHeader(true);
 
-        $result = UserTable::getList(
-            [
-                'select' => array('ID', 'NAME', 'EMAIL'),
-                'filter' => $this->filter,
-                'order'  => array('ID' => 'DESC')
-            ]
-        );
+        $result = $this->getUserList();
 
-        while ($arUser = $result->fetch())
-        {
+        foreach ($result as $arUser){
             $csvFile->SaveFile($filePath, [$arUser['ID'], $arUser['NAME'], $arUser['EMAIL']]);
         }
 
-        header('Content-Description: File Transfer');
-        header('Content-Type: application/octet-stream');
-        header('Content-Disposition: attachment; filename=' . basename($filePath));
-        header('Content-Transfer-Encoding: binary');
-        header('Expires: 0');
-        header('Cache-Control: must-revalidate');
-        header('Pragma: public');
-        header('Content-Length: ' . filesize($filePath));
-
-        readfile($filePath);
-
-        die();
+        return $tmp_file;
     }
 
-    public function getXml()
+    public function generateFileXml()
     {
-        $filePath = $_SERVER['DOCUMENT_ROOT'] . '/upload/users.xml';
+        $tmp_file = $_SERVER['DOCUMENT_ROOT'] . '/upload/users_'.uniqid().'.xml';
         $export = new \Bitrix\Main\XmlWriter(array(
-            'file' => '/upload/users.xml',
+            'file' => '/upload/'.$tmp_file,
             'create_file' => true,
             'charset' => 'UTF-8',
             'lowercase' => false
@@ -119,16 +150,9 @@ class UserListComponent extends CBitrixComponent
 
         $export->writeBeginTag('users');
 
-        $result = UserTable::getList(
-            [
-                'select' => array('ID', 'NAME', 'EMAIL'),
-                'filter' => $this->filter,
-                'order'  => array('ID' => 'DESC')
-            ]
-        );
+        $result = $this->getUserList();
 
-        while ($arUser = $result->fetch())
-        {
+        foreach ($result as $arUser){
             $export->writeBeginTag('item');
             $export->writeFullTag('ID', $arUser['ID']);
             $export->writeFullTag('NAME', $arUser['NAME']);
@@ -139,6 +163,17 @@ class UserListComponent extends CBitrixComponent
         $export->writeEndTag('users');
         $export->closeFile();
 
+        return $tmp_file;
+    }
+
+    public function downloadFile($type){
+        global $APPLICATION;
+
+        $APPLICATION->restartBuffer();
+
+        if(!in_array($type, ['csv', 'xml'])) return false;
+
+        $filePath = $_SERVER['DOCUMENT_ROOT'] . '/upload/users.'.$type;
         header('Content-Description: File Transfer');
         header('Content-Type: application/octet-stream');
         header('Content-Disposition: attachment; filename=' . basename($filePath));
@@ -150,22 +185,15 @@ class UserListComponent extends CBitrixComponent
 
         readfile($filePath);
 
-        die();
+        exit;
     }
 
     public function executeComponent()
     {
-        global $APPLICATION;
-
-        if ($this->arParams['AJAX'] == 'Y' || $_GET['task'] == 'getCsv' || $_GET['task'] == 'getXml') $APPLICATION->RestartBuffer();
-
-        if($_GET['task'] == 'getCsv') $this->getCsv();
-        if($_GET['task'] == 'getXml') $this->getXml();
+        if(isset($_GET['get_file'])) $this->downloadFile($_GET['get_file']);
 
         $this->getResult();
         $this->includeComponentTemplate();
-
-        if ($this->arParams['AJAX'] == 'Y') die();
 
         return $this->returned;
     }

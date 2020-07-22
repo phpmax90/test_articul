@@ -17,3 +17,19 @@
     )
 );?>
 ```
+***
+В файл init.php добавляем события сбрасывания кэша, при каких-либо действиях с пользователями при неоходимости:
+```php
+use Bitrix\Main\EventManager;
+
+$eventManager = EventManager::getInstance();
+$eventManager->addEventHandlerCompatible("main", "OnAfterUserAdd", function(&$fields) {
+    \Bitrix\Main\UserTable::getEntity()->cleanCache();
+});
+$eventManager->addEventHandlerCompatible("main", "OnAfterUserUpdate", function(&$fields) {
+    \Bitrix\Main\UserTable::getEntity()->cleanCache();
+});
+$eventManager->addEventHandlerCompatible("main", "OnAfterUserDelete", function(&$fields) {
+    \Bitrix\Main\UserTable::getEntity()->cleanCache();
+});
+```
